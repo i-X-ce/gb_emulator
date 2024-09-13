@@ -1,4 +1,6 @@
-use instruction::{ArithmeticTarget, Instruction, JumpTest, LoadByteSource, LoadByteTarget, LoadType, StackTarget};
+use std::result;
+
+use instruction::{ArithmeticTarget, Instruction, JumpTest, LoadType, StackTarget};
 
 mod instruction;
 
@@ -72,13 +74,13 @@ impl Registers{
     }
 
     fn get_de(&self) -> u16 {
-        (self.e as u16) << 8
-        | self.d as u16
+        (self.d as u16) << 8
+        | self.e as u16
     }
 
     fn get_hl(&self) -> u16 {
-        (self.l as u16) << 8
-        | self.h as u16
+        (self.h as u16) << 8
+        | self.l as u16
     }
 
     fn set_af(&mut self, value: u16){
@@ -122,125 +124,100 @@ impl CPU {
 
     fn execute(&mut self, instruction: Instruction) -> u16 {
         match instruction {
-            Instruction::LD(load_type) => {
-                match load_type {
-                    LoadType::Byte(target, source) => {
-                        let source_value = match source {
-                            LoadByteSource::A => self.registers.a,
-                            LoadByteSource::B => self.registers.b,
-                            LoadByteSource::C => self.registers.c,
-                            LoadByteSource::D => self.registers.d,
-                            LoadByteSource::E => self.registers.e,
-                            LoadByteSource::H => self.registers.h,
-                            LoadByteSource::L => self.registers.l,
-                            LoadByteSource::D8 => self.read_next_byte(),
-                            LoadByteSource::HLI => self.bus.read_byte((self.registers.get_hl())),
-                            _ => { panic!("TODO: inplement other sources")}
-                        };
-                        match target {
-                            LoadByteTarget::A => self.registers.a = source_value,
-                            LoadByteTarget::B => self.registers.b = source_value,
-                            LoadByteTarget::C => self.registers.c = source_value,
-                            LoadByteTarget::D => self.registers.d = source_value,
-                            LoadByteTarget::E => self.registers.e = source_value,
-                            LoadByteTarget::H => self.registers.h = source_value,
-                            LoadByteTarget::L => self.registers.l = source_value,
-                            LoadByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
-                            _ => { panic!("TODO: inplement other targets")}
-                        };
-                        match source {
-                            LoadByteSource::D8 => self.pc.wrapping_add(2),
-                            _ => self.pc.wrapping_add(1),
-                        }
-                    }
-                    _ => { panic!("TODO: inplement other load types")}
-                }
-            },
-            Instruction::ADD(target) =>{
-                match target {
-                    ArithmeticTarget::A => self.pc,
-                    ArithmeticTarget::B => self.pc,
-                    ArithmeticTarget::C => {
-                        let value = self.registers.c;
-                        let new_value = self.add(value);
-                        self.registers.a = new_value;
-                        self.pc.wrapping_add(1)
-                    },
-                    ArithmeticTarget::D => self.pc,
-                    ArithmeticTarget::E => self.pc,
-                    ArithmeticTarget::H => self.pc,
-                    ArithmeticTarget::L => self.pc,
-                }
-            },
-            Instruction::JP(test) => {
-                let jump_condition = match test{ 
-                    JumpTest::NotZero => !self.registers.f.zero,
-                    JumpTest::NotCarry => !self.registers.f.carry,
-                    JumpTest::Zero => self.registers.f.zero,
-                    JumpTest::Carry => self.registers.f.carry,
-                    JumpTest::Always => true
-                };
-                self.jump(jump_condition)
-            },
-            Instruction::PUSH(target) => {
-                let value = match target {
-                    StackTarget::AF => self.registers.get_af(),
-                    StackTarget::BC => self.registers.get_bc(),
-                    StackTarget::DE => self.registers.get_de(),
-                    StackTarget::HL => self.registers.get_hl(),
-                    _ => { panic!("TODO: support more targets") }
-                };
-                self.push(value);
-                self.pc.wrapping_add(1)
-            },
-            Instruction::POP(target) => {
-                let result = self.pop();
-                match target {
-                    StackTarget::AF => self.registers.set_af(result),
-                    StackTarget::BC => self.registers.set_bc(result),
-                    StackTarget::DE => self.registers.set_de(result),
-                    StackTarget::HL => self.registers.set_hl(result),
-                    _ => {panic!("TODO: support more targets")}
-                }
-                self.pc.wrapping_add(1)
-            },
-            Instruction::CALL(test) => {
-                let jump_condition = match test {
-                    JumpTest::NotZero => !self.registers.f.zero,
-                    JumpTest::NotCarry => !self.registers.f.carry,
-                    JumpTest::Zero => self.registers.f.zero,
-                    JumpTest::Carry => self.registers.f.carry,
-                    JumpTest::Always => true,
-                    _ => { panic!("TODO: support more conditions")}
-                };
-                self.call(jump_condition)
-            },
-            Instruction::RET(test) => {
-                let jump_condition = match test {
-                    JumpTest::NotZero => !self.registers.f.zero,
-                    JumpTest::NotCarry => !self.registers.f.carry,
-                    JumpTest::Zero => self.registers.f.zero,
-                    JumpTest::Carry => self.registers.f.carry,
-                    JumpTest::Always => true,
-                    _ => { panic!("TODO: support more conditions")}
-                };
-                self.return_(jump_condition)
-            }
+            Instruction::NOP => self.pc,
+            Instruction::LD(load_type) => self.ld(load_type),
+            Instruction::ADD(target) => self.add(target),
+            Instruction::JP(test) => self.jump(test),
+            Instruction::JPHL => self.jumphl(),
+            Instruction::PUSH(target) => self.push(target),
+            Instruction::POP(target) => self.pop(target),
+            Instruction::CALL(test) => self.call(test),
+            Instruction::RET(test) => self.return_(test),
+            Instruction::ADDHL(target) => self.addhl(target),
             _ => { panic!("TODO: support more instructions")}
         }
     }
+
+    fn ld(&mut self, load_type: LoadType) -> u16{
+        match load_type {
+            LoadType::Byte(target, source) => {
+                let source_value = self.read_registers_byte(source);
+                match target {
+                    ArithmeticTarget::A => self.registers.a = source_value,
+                    ArithmeticTarget::B => self.registers.b = source_value,
+                    ArithmeticTarget::C => self.registers.c = source_value,
+                    ArithmeticTarget::D => self.registers.d = source_value,
+                    ArithmeticTarget::E => self.registers.e = source_value,
+                    ArithmeticTarget::H => self.registers.h = source_value,
+                    ArithmeticTarget::L => self.registers.l = source_value,
+                    ArithmeticTarget::HL_ => self.bus.write_byte(self.registers.get_hl(), source_value),
+                    _ => { panic!("TODO: inplement other targets")}
+                };
+                match source {
+                    ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+                    _ => self.pc.wrapping_add(1),
+                }
+            },
+            LoadType::WORD(target, source) => {
+                let source_value = match source {
+                    ArithmeticTarget::D16 => self.read_next_word(),
+                    _ => { panic!("TODO: inplement other sources")}
+                };
+                match target {
+                    ArithmeticTarget::BC => self.registers.set_bc(source_value),
+                    ArithmeticTarget::DE => self.registers.set_bc(source_value),
+                    ArithmeticTarget::HL_ => self.registers.set_bc(source_value),
+                    _ => { panic!("TODO: inplement other targets")}
+                };
+                self.pc.wrapping_add(3)
+            }
+            _ => { panic!("TODO: inplement other load types")}
+        } 
+    }
     
-    fn add (&mut self, value: u8) -> u8 {
-        let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
-        self.registers.f.zero = new_value == 0;
-        self.registers.f.subtract = false;
-        self.registers.f.carry = did_overflow;
-        self.registers.f.half_carry = (self.registers.a & 0xF) + (value & 0xF) > 0xF;
-        new_value
+    fn add (&mut self, target: ArithmeticTarget) -> u16 {
+        match target {
+            ArithmeticTarget::SP => {
+                let r = (self.sp & 0x00FF) as u8;
+                let value = self.read_next_byte() as i8;
+                let (new_value, did_overflow) = self.sp.overflowing_add(value as u16);
+                self.registers.f.zero = false;
+                self.registers.f.subtract = false;
+                self.registers.f.carry = did_overflow;
+                self.registers.f.half_carry = (r & 0xF) + (value as u8 & 0xF) > 0xF;
+                self.sp = new_value as u16;
+                self.pc.wrapping_add(2)
+            },
+            _ => {
+                let value = self.read_registers_byte(target);
+                let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
+                self.registers.f.zero = new_value == 0;
+                self.registers.f.subtract = false;
+                self.registers.f.carry = did_overflow;
+                self.registers.f.half_carry = (self.registers.a & 0xF) + (value & 0xF) > 0xF;
+                self.registers.a = new_value;
+
+                match target {
+                    ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+                    _ => self.pc.wrapping_add(1)
+                }
+            }
+        }
+        
     }
 
-    fn jump(&self, should_jump: bool) -> u16 {
-        if (should_jump) {
+    fn addhl(&mut self, target: ArithmeticTarget) -> u16 {
+        let value = self.read_registers_word(target);
+        let (new_value, did_overflow) = self.registers.get_hl().overflowing_add(value);
+        self.registers.f.subtract = false;
+        self.registers.f.carry = did_overflow;
+        self.registers.f.half_carry = (self.registers.get_hl() & 0x0FFF) + (value & 0x0FFF) > 0x0FFF;
+        self.registers.set_hl(new_value);
+        self.pc.wrapping_add(1)
+    }
+
+    fn jump(&self, test: JumpTest) -> u16 {
+        if (self.should_jump(test)) {
             let least_signigicant_byte = self.bus.read_byte(self.pc + 1) as u16;
             let most_significant_byte = self.bus.read_byte(self.pc + 2) as u16;
             (most_significant_byte << 8) | least_signigicant_byte
@@ -249,37 +226,61 @@ impl CPU {
         }
     }
 
-    fn push(&mut self, value: u16) {
-        self.sp = self.sp.wrapping_sub(1);
-        self.bus.write_byte(self.sp, ((value & 0xFF00) >> 8) as u8);
-
-        self.sp = self.sp.wrapping_sub(1);
-        self.bus.write_byte(self.sp, (value & 0x00FF) as u8);
+    fn jumphl(&self) -> u16{
+        self.registers.get_hl()
     }
 
-    fn pop(&mut self) -> u16 {
+    fn push(&mut self, target: StackTarget) -> u16 {
+        let value = match target {
+            StackTarget::AF => self.registers.get_af(),
+            StackTarget::BC => self.registers.get_bc(),
+            StackTarget::DE => self.registers.get_de(),
+            StackTarget::HL => self.registers.get_hl(),
+            _ => { panic!("TODO: support more targets") }
+        };
+        self.sp = self.sp.wrapping_sub(1);
+        self.bus.write_byte(self.sp, ((value & 0xFF00) >> 8) as u8);
+        self.sp = self.sp.wrapping_sub(1);
+        self.bus.write_byte(self.sp, (value & 0x00FF) as u8);
+        self.pc.wrapping_add(1)
+    }
+
+    fn pop(&mut self, target: StackTarget) -> u16 {
         let lsb = self.bus.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
 
         let msb = self.bus.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
 
-        (msb << 8) | lsb
+        let result = (msb << 8) | lsb;
+
+        match target {
+            StackTarget::AF => self.registers.set_af(result),
+            StackTarget::BC => self.registers.set_bc(result),
+            StackTarget::DE => self.registers.set_de(result),
+            StackTarget::HL => self.registers.set_hl(result),
+            StackTarget::NONE => (),
+            _ => {panic!("TODO: support more targets")}
+        }
+        
+        self.pc.wrapping_add(1)
     }
 
-    fn call(&mut self, should_jump: bool) -> u16 {
+    fn call(&mut self, test: JumpTest) -> u16 {
+        // self.call(jump_condition)
         let next_pc = self.pc.wrapping_add(3);
-        if should_jump {
-            self.push(next_pc);
+
+        if self.should_jump(test) {
+            self.push(StackTarget::D16((next_pc)));
             self.read_next_word()
         } else {
             next_pc
         }
     }
 
-    fn return_(&mut self, should_jump: bool) -> u16 {
-        if should_jump {
-            self.pop()
+    fn return_(&mut self, test: JumpTest) -> u16 {
+        if self.should_jump(test) {
+            self.pop(StackTarget::NONE)
         } else {
             self.pc.wrapping_add(1)
         }
@@ -311,6 +312,47 @@ impl CPU {
         let u = self.bus.read_byte(self.pc + 2) as u16;
         (u << 8) | l
     }
+
+    fn read_registers_byte(&self, target: ArithmeticTarget) -> u8{
+        match target {
+            ArithmeticTarget::A => self.registers.a,
+            ArithmeticTarget::B => self.registers.b,
+            ArithmeticTarget::C => self.registers.c,
+            ArithmeticTarget::D => self.registers.d,
+            ArithmeticTarget::E => self.registers.e,
+            ArithmeticTarget::H => self.registers.h,
+            ArithmeticTarget::L => self.registers.l,
+            ArithmeticTarget::HL_ => self.bus.read_byte(self.registers.get_hl()),
+            ArithmeticTarget::HLi_ => self.bus.read_byte(self.registers.get_hl()),
+            ArithmeticTarget::HLd_ => self.bus.read_byte(self.registers.get_hl()),
+            ArithmeticTarget::BC_ => self.bus.read_byte(self.registers.get_bc()),
+            ArithmeticTarget::DE_ => self.bus.read_byte(self.registers.get_de()),
+            ArithmeticTarget::D8 => self.read_next_byte(),
+            ArithmeticTarget::D16_ => self.bus.read_byte(self.read_next_word()),
+            _ => panic!("TODO: support more targets")
+        }
+    }
+
+    fn read_registers_word(&self, target: ArithmeticTarget) -> u16{
+        match target {
+            ArithmeticTarget::BC => self.registers.get_bc(),
+            ArithmeticTarget::DE => self.registers.get_de(),
+            ArithmeticTarget::HL => self.registers.get_hl(),
+            ArithmeticTarget::SP => self.sp,
+            _ => panic!("TODO: support more targets")
+        }
+    }
+
+    fn should_jump(&self, test: JumpTest) -> bool {
+        match test { 
+            JumpTest::NotZero => !self.registers.f.zero,
+            JumpTest::NotCarry => !self.registers.f.carry,
+            JumpTest::Zero => self.registers.f.zero,
+            JumpTest::Carry => self.registers.f.carry,
+            JumpTest::Always => true
+        }
+    }
+
 }
 
 struct  MemoryBus{
@@ -336,6 +378,174 @@ impl MemoryBus{
 mod test {
     use super::*;
 
+    fn F(zero: bool, subtract: bool, half_carry: bool, carry: bool) -> FlagsRegister {
+        FlagsRegister{
+            zero,
+            subtract,
+            half_carry,
+            carry
+        }
+    }
+
+    #[test]
+    fn test_add_a(){
+        // A, A
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x87);
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x04);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // A, B
+        cpu.bus.write_byte(0x0001, 0x80);
+        cpu.registers.b = 0x03;
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x05);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // A, C
+        cpu.bus.write_byte(0x0002, 0x81);
+        cpu.registers.c = 0x03;
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x05);
+        assert_eq!(cpu.pc, 0x0003);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // A, D
+        cpu.bus.write_byte(0x0003, 0x82);
+        cpu.registers.d = 0x03;
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x05);
+        assert_eq!(cpu.pc, 0x0004);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // A, E
+        cpu.bus.write_byte(0x0004, 0x83);
+        cpu.registers.e = 0x03;
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x05);
+        assert_eq!(cpu.pc, 0x0005);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // A, H
+        cpu.bus.write_byte(0x0005, 0x84);
+        cpu.registers.h = 0x03;
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x05);
+        assert_eq!(cpu.pc, 0x0006);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // A, L
+        cpu.bus.write_byte(0x0006, 0x85);
+        cpu.registers.l = 0x03;
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x05);
+        assert_eq!(cpu.pc, 0x0007);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // A, (HL)
+        cpu.bus.write_byte(0x0007, 0x86);
+        cpu.bus.write_byte(0x1000, 0x0A);
+        cpu.registers.set_hl(0x1000);
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x0C);
+        assert_eq!(cpu.pc, 0x0008);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // A, D8
+        cpu.bus.write_byte(0x0008, 0xC6);
+        cpu.bus.write_byte(0x0009, 0x03);
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x05);
+        assert_eq!(cpu.pc, 0x000A);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        
+    }
+
+    #[test]
+    fn test_add_sp(){
+        // SP, D8
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xE8);
+        cpu.bus.write_byte(0x0001, 0x03);
+        cpu.sp = 0x0100;
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.sp, 0x0103);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // SP, D8 miner
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xE8);
+        cpu.bus.write_byte(0x0001, 0xF0);
+        cpu.sp = 0x0000;
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.sp, 0xFFF0);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+        
+        // SP, D8 carry
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xE8);
+        cpu.bus.write_byte(0x0001, 0x10);
+        cpu.sp = 0x00F0;
+        cpu.registers.a = 0x02;
+        cpu.step();
+        assert_eq!(cpu.sp, 0x0100);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+    }
+
     #[test]
     fn test_add_c(){
         let mut cpu = CPU::new();
@@ -347,12 +557,7 @@ mod test {
         assert_eq!(cpu.pc, 0x0001);
         assert_eq!(
             cpu.registers.f,
-            FlagsRegister {
-                zero: false,
-                subtract: false,
-                half_carry: false,
-                carry: false,
-            }
+            F(false, false, false, false)
         )
     }
 
@@ -367,12 +572,7 @@ mod test {
         assert_eq!(cpu.pc, 0x0001);
         assert_eq!(
             cpu.registers.f,
-            FlagsRegister {
-                zero: true,
-                subtract: false,
-                half_carry: false,
-                carry: false,
-            }
+            F(true, false, false, false)
         )
     }
 
@@ -387,12 +587,7 @@ mod test {
         assert_eq!(cpu.pc, 0x0001);
         assert_eq!(
             cpu.registers.f,
-            FlagsRegister {
-                zero: false,
-                subtract: false,
-                half_carry: false,
-                carry: true,
-            }
+            F(false, false, false, true)
         )
     }
 
@@ -407,17 +602,100 @@ mod test {
         assert_eq!(cpu.pc, 0x0001);
         assert_eq!(
             cpu.registers.f,
-            FlagsRegister {
-                zero: false,
-                subtract: false,
-                half_carry: true,
-                carry: false,
-            }
+            F(false, false, true, false)
         )
     }
 
     #[test]
+    fn test_add_hl(){
+        // HL, BC
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x09);
+        cpu.registers.set_bc(0x0005);
+        cpu.registers.set_hl(0x0003);
+        cpu.step();
+        assert_eq!(cpu.registers.get_hl(), 0x0008);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // HL, DE
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x19);
+        cpu.registers.set_de(0x0001);
+        cpu.registers.set_hl(0x00FF);
+        cpu.step();
+        assert_eq!(cpu.registers.get_hl(), 0x0100);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // HL, HL
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x29);
+        cpu.registers.set_hl(0x00FF);
+        cpu.step();
+        assert_eq!(cpu.registers.get_hl(), 0x01FE);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // HL, SP
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x39);
+        cpu.sp = 0x00FF;
+        cpu.registers.set_hl(0x00FF);
+        cpu.step();
+        assert_eq!(cpu.registers.get_hl(), 0x01FE);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // half carry
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x09);
+        cpu.registers.set_bc(0x0100);
+        cpu.registers.set_hl(0x0F10);
+        cpu.step();
+        assert_eq!(cpu.registers.get_hl(), 0x1010);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, true, false)
+        );
+
+        // carry
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x09);
+        cpu.registers.set_bc(0xF000);
+        cpu.registers.set_hl(0x1000);
+        cpu.step();
+        assert_eq!(cpu.registers.get_hl(), 0x0000);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, true)
+        );
+    }
+
+    #[test]
     fn test_jp(){
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xC3);
+        cpu.bus.write_byte(0x0001, 0x01);
+        cpu.bus.write_byte(0x0002, 0x02);
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0201);
+
+        // JP HL
         let mut cpu = CPU::new();
         cpu.bus.write_byte(0x0000, 0xC3);
         cpu.bus.write_byte(0x0001, 0x01);
