@@ -129,6 +129,9 @@ impl CPU {
             Instruction::INC(target) => self.inc(target),
             Instruction::DEC(target) => self.dec(target),
             Instruction::ADD(target) => self.add(target),
+            Instruction::ADC(target) => self.adc(target),
+            Instruction::SUB(target) => self.sub(target),
+            Instruction::SBC(target) => self.sub(target),
             Instruction::JP(test) => self.jump(test),
             Instruction::JPHL => self.jumphl(),
             Instruction::PUSH(target) => self.push(target),
@@ -152,17 +155,24 @@ impl CPU {
                 }
             },
             LoadType::WORD(target, source) => {
-                let source_value = match source {
-                    ArithmeticTarget::D16 => self.read_next_word(),
-                    _ => { panic!("TODO: inplement other sources")}
-                };
+                let source_value = self.read_registers_arithmeticTarget(source);
                 match target {
-                    ArithmeticTarget::BC => self.registers.set_bc(source_value),
-                    ArithmeticTarget::DE => self.registers.set_de(source_value),
-                    ArithmeticTarget::HL => self.registers.set_hl(source_value),
-                    _ => { panic!("TODO: inplement other targets")}
-                };
-                self.pc.wrapping_add(3)
+                    ArithmeticTarget::SPA => {
+                        let r = (self.sp & 0x00FF) as u8;
+                        let value = self.read_next_byte() as i8;
+                        let (new_value, did_overflow) = self.sp.overflowing_add(value as u16);
+                        self.registers.f.zero = false;
+                        self.registers.f.subtract = false;
+                        self.registers.f.carry = did_overflow;
+                        self.registers.f.half_carry = (r & 0xF) + (value as u8 & 0xF) > 0xF;
+                        self.change_registers_arithmeticTarget(target, new_value);
+                        self.pc.wrapping_add(2)
+                    }
+                    _ => {
+                        self.change_registers_arithmeticTarget(target, source_value);
+                        self.pc.wrapping_add(3)
+                    }
+                }
             }
             _ => { panic!("TODO: inplement other load types")}
         } 
@@ -218,20 +228,24 @@ impl CPU {
                 let r = (self.sp & 0x00FF) as u8;
                 let value = self.read_next_byte() as i8;
                 let (new_value, did_overflow) = self.sp.overflowing_add(value as u16);
-                self.registers.f.zero = false;
-                self.registers.f.subtract = false;
-                self.registers.f.carry = did_overflow;
-                self.registers.f.half_carry = (r & 0xF) + (value as u8 & 0xF) > 0xF;
+                self.change_flag(
+                    false,
+                    false, 
+                    (r & 0xF) + (value as u8 & 0xF) > 0xF, 
+                    did_overflow);
+                
                 self.sp = new_value as u16;
                 self.pc.wrapping_add(2)
             },
             _ => {
                 let value = self.read_registers_arithmeticTarget(target) as u8;
                 let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
-                self.registers.f.zero = new_value == 0;
-                self.registers.f.subtract = false;
-                self.registers.f.carry = did_overflow;
-                self.registers.f.half_carry = (self.registers.a & 0xF) + (value & 0xF) > 0xF;
+                self.change_flag(
+                    new_value == 0, 
+                    false, 
+                    (self.registers.a & 0xF) + (value & 0xF) > 0xF, 
+                    did_overflow);
+                
                 self.registers.a = new_value;
 
                 match target {
@@ -241,6 +255,57 @@ impl CPU {
             }
         }
         
+    }
+
+    fn adc(&mut self, target: ArithmeticTarget) -> u16 {
+        let value = self.read_registers_arithmeticTarget(target) as u8;
+        let carry_inc: u8 = if self.registers.f.carry {1} else {0};
+        let (new_value, did_overflow) = self.registers.a.overflowing_add(value + carry_inc);
+        self.change_flag(
+            new_value == 0, 
+            false, 
+            (self.registers.a & 0xF) + (value & 0xF) + carry_inc > 0xF, 
+            did_overflow);
+        
+        self.registers.a = new_value;
+
+        match target {
+            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+            _ => self.pc.wrapping_add(1)
+        }
+    }
+
+    fn sub(&mut self, target: ArithmeticTarget) -> u16{
+        let value = self.read_registers_arithmeticTarget(target) as u8;
+        let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
+        self.change_flag(
+            new_value == 0, 
+            false,
+            (self.registers.a & 0xF) + (value & 0xF)> 0xF, 
+            did_overflow);
+        
+        self.registers.a = new_value;
+        match target {
+            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+            _ => self.pc.wrapping_add(1)
+        }
+    }
+
+    fn sbc(&mut self, target: ArithmeticTarget) -> u16{
+        let value = self.read_registers_arithmeticTarget(target) as u8;
+        let carry_inc: u8 = if self.registers.f.carry {1} else {0};
+        let (new_value, did_overflow) = self.registers.a.overflowing_add(value + carry_inc);
+        self.change_flag(
+            new_value == 0, 
+            false,
+            (self.registers.a & 0xF) + (value & 0xF) +carry_inc > 0xF, 
+            did_overflow);
+        
+        self.registers.a = new_value;
+        match target {
+            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+            _ => self.pc.wrapping_add(1)
+        }
     }
 
     fn addhl(&mut self, target: ArithmeticTarget) -> u16 {
@@ -309,8 +374,7 @@ impl CPU {
         let next_pc = self.pc.wrapping_add(3);
 
         if self.should_jump(test) {
-            self.push(StackTarget::D16((next_pc)));
-            self.pc.wrapping_sub(1);
+            self.push(StackTarget::D16(next_pc));
             self.read_next_word()
         } else {
             next_pc
@@ -377,12 +441,17 @@ impl CPU {
             ArithmeticTarget::DE_ => self.bus.read_byte(self.registers.get_de()) as u16,
             ArithmeticTarget::D8 => self.read_next_byte() as u16,
             ArithmeticTarget::D16_ => self.bus.read_byte(self.read_next_word()) as u16,
+            ArithmeticTarget::FD8_ => self.bus.read_byte(0xFF00 + self.read_next_byte() as u16) as u16,
+            ArithmeticTarget::FDC_ => self.bus.read_byte(0xFF00 + self.registers.c as u16) as u16,
+
             //16bit
             ArithmeticTarget::BC => self.registers.get_bc(),
             ArithmeticTarget::DE => self.registers.get_de(),
             ArithmeticTarget::HL => self.registers.get_hl(),
             ArithmeticTarget::SP => self.sp,
-            _ => panic!("TODO: support more targets")
+            ArithmeticTarget::D16 => self.read_next_word(),
+            ArithmeticTarget::SPA => self.sp,
+            // _ => panic!("TODO: support more targets")
         }
     }
 
