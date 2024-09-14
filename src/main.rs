@@ -1,4 +1,4 @@
-use std::result;
+use std::{env::set_var, result};
 
 use instruction::{ArithmeticTarget, Instruction, JumpTest, LoadType, StackTarget};
 
@@ -110,6 +110,7 @@ struct CPU{
     pc: u16,
     sp: u16,
     bus: MemoryBus,
+    is_halted: bool,
 }
 
 impl CPU {
@@ -119,6 +120,7 @@ impl CPU {
             pc: 0x0000,
             sp: 0x0000,
             bus: MemoryBus::new(),
+            is_halted: false,
         }
     }
 
@@ -129,17 +131,47 @@ impl CPU {
             Instruction::INC(target) => self.inc(target),
             Instruction::DEC(target) => self.dec(target),
             Instruction::ADD(target) => self.add(target),
+            Instruction::ADDHL(target) => self.addhl(target),
             Instruction::ADC(target) => self.adc(target),
             Instruction::SUB(target) => self.sub(target),
             Instruction::SBC(target) => self.sub(target),
+            Instruction::CP(target) => self.cp(target),
+            Instruction::DAA => self.daa(),
+            Instruction::AND(target) => self.and(target),
+            Instruction::OR(target) => self.or(target),
+            Instruction::XOR(target) => self.xor(target),
+            Instruction::RR(target) => self.rr(target),
+            Instruction::RRA => self.rra(),
+            Instruction::RRC(target) => self.rrc(target),
+            Instruction::RRCA => self.rrca(),
+            Instruction::RL(target) => self.rl(target),
+            Instruction::RLA => self.rla(),
+            Instruction::RLC(target) => self.rlc(target),
+            Instruction::RLCA => self.rlca(),
+            Instruction::SLA(target) => self.sla(target),
+            Instruction::SRA(target) => self.sra(target),
+            Instruction::SWAP(target) => self.swap(target),
+            Instruction::SRL(target) => self.srl(target),
+            Instruction::BIT(target, n) => self.bit(target, n),
+            Instruction::RES(target, n) => self.res(target, n),
+            Instruction::SET(target, n) => self.set(target, n),
+            Instruction::CPL => self.cpl(),
+            Instruction::CCF => self.ccf(),
+            Instruction::SCF => self.scf(),
             Instruction::JP(test) => self.jump(test),
             Instruction::JPHL => self.jumphl(),
+            Instruction::JR(test) => self.jr(test),
             Instruction::PUSH(target) => self.push(target),
             Instruction::POP(target) => self.pop(target),
             Instruction::CALL(test) => self.call(test),
-            Instruction::RET(test) => self.return_(test),
-            Instruction::ADDHL(target) => self.addhl(target),
-            _ => { panic!("TODO: support more instructions")}
+            Instruction::RST(address) => self.rst(address),
+            Instruction::RET(test) => self.ret(test),
+            Instruction::RETI => self.reti(),
+            Instruction::STOP => panic!("call STOP"),
+            Instruction::HALT => self.pc,
+            Instruction::DI => panic!("call DI"),
+            Instruction::EI => panic!("call EI"),
+            // _ => { panic!("TODO: support more instructions")}
         }
     }
 
@@ -275,39 +307,6 @@ impl CPU {
         }
     }
 
-    fn sub(&mut self, target: ArithmeticTarget) -> u16{
-        let value = self.read_registers_arithmeticTarget(target) as u8;
-        let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
-        self.change_flag(
-            new_value == 0, 
-            false,
-            (self.registers.a & 0xF) + (value & 0xF)> 0xF, 
-            did_overflow);
-        
-        self.registers.a = new_value;
-        match target {
-            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-            _ => self.pc.wrapping_add(1)
-        }
-    }
-
-    fn sbc(&mut self, target: ArithmeticTarget) -> u16{
-        let value = self.read_registers_arithmeticTarget(target) as u8;
-        let carry_inc: u8 = if self.registers.f.carry {1} else {0};
-        let (new_value, did_overflow) = self.registers.a.overflowing_add(value + carry_inc);
-        self.change_flag(
-            new_value == 0, 
-            false,
-            (self.registers.a & 0xF) + (value & 0xF) +carry_inc > 0xF, 
-            did_overflow);
-        
-        self.registers.a = new_value;
-        match target {
-            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-            _ => self.pc.wrapping_add(1)
-        }
-    }
-
     fn addhl(&mut self, target: ArithmeticTarget) -> u16 {
         let value = self.read_registers_arithmeticTarget(target);
         let (new_value, did_overflow) = self.registers.get_hl().overflowing_add(value);
@@ -318,11 +317,321 @@ impl CPU {
         self.pc.wrapping_add(1)
     }
 
+    fn sub(&mut self, target: ArithmeticTarget) -> u16 {
+        let value = self.read_registers_arithmeticTarget(target) as u8;
+        let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
+        self.change_flag(
+            new_value == 0, 
+            false,
+            (self.registers.a & 0x0F) < 0x0F + (value & 0x0F), 
+            did_overflow);
+        
+        self.registers.a = new_value;
+        match target {
+            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+            _ => self.pc.wrapping_add(1)
+        }
+    }
+
+    fn sbc(&mut self, target: ArithmeticTarget) -> u16 {
+        let value = self.read_registers_arithmeticTarget(target) as u8;
+        let carry_inc: u8 = if self.registers.f.carry {1} else {0};
+        let (new_value, did_overflow) = self.registers.a.overflowing_sub(value + carry_inc);
+        self.change_flag(
+            new_value == 0, 
+            false,
+            (self.registers.a & 0x0F) < 0x0F + (value & 0x0F) + carry_inc, 
+            did_overflow);
+        
+        self.registers.a = new_value;
+        match target {
+            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+            _ => self.pc.wrapping_add(1)
+        }
+    }
+
+    fn cp(&mut self, target: ArithmeticTarget) -> u16 {
+        let value = self.read_registers_arithmeticTarget(target) as u8;
+        let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
+        self.change_flag(
+            new_value == 0, 
+            false,
+            (self.registers.a & 0x0F) < 0x0F + (value & 0x0F), 
+            did_overflow);
+        
+        match target {
+            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+            _ => self.pc.wrapping_add(1)
+        }
+    }
+
+    fn daa(&mut self) -> u16 {
+
+        self.pc.wrapping_add(1)
+    }
+
+    fn and(&mut self, target: ArithmeticTarget) -> u16 {
+        let value = self.read_registers_arithmeticTarget(target) as u8;
+        self.registers.a &= value;
+        self.change_flag(
+            self.registers.a == 0, 
+            false, 
+            true, 
+            false);
+        match target {
+            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+            _ => self.pc.wrapping_add(1)
+        }
+    }
+
+    fn or(&mut self, target: ArithmeticTarget) -> u16 {
+        let value = self.read_registers_arithmeticTarget(target) as u8;
+        self.registers.a |= value;
+        self.change_flag(
+            self.registers.a == 0, 
+            false, 
+            false,
+             false);
+        match target {
+            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+            _ => self.pc.wrapping_add(1)
+        }
+    }
+
+    fn xor(&mut self, target: ArithmeticTarget) -> u16 {
+        let value = self.read_registers_arithmeticTarget(target) as u8;
+        self.registers.a ^= value;
+        self.change_flag(
+            self.registers.a == 0, 
+            false, 
+            false,
+             false);
+        match target {
+            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+            _ => self.pc.wrapping_add(1)
+        }
+    }
+
+    fn rr(&mut self, target: ArithmeticTarget) -> u16 {
+        let mut value = self.read_registers_arithmeticTarget(target) as u8;
+        let next_carry = self.get_bit(value, 0);
+        value >>= 1;
+        if self.registers.f.carry { value = self.set_bit(value, 7) };
+        self.change_registers_arithmeticTarget(target, value as u16);
+        self.change_flag(
+            value == 0,
+            false,
+            false, 
+            next_carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn rra(&mut self) -> u16 {
+        let mut value = self.registers.a;
+        let next_carry = self.get_bit(value, 0);
+        value >>= 1;
+        if self.registers.f.carry { value = self.set_bit(value, 7) };
+        self.registers.a = value;
+        self.change_flag(
+            false,
+            false,
+            false, 
+            next_carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn rrc(&mut self, target: ArithmeticTarget) -> u16 {
+        let mut value = self.read_registers_arithmeticTarget(target) as u8;
+        let next_carry = self.get_bit(value, 0);
+        value >>= 1;
+        if next_carry { value = self.set_bit(value, 7) };
+        self.change_registers_arithmeticTarget(target, value as u16);
+        self.change_flag(
+            value == 0,
+            false,
+            false, 
+            next_carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn rrca(&mut self) -> u16 {
+        let mut value = self.registers.a;
+        let next_carry = self.get_bit(value, 0);
+        value >>= 1;
+        if next_carry { value = self.set_bit(value, 7) };
+        self.registers.a = value;
+        self.change_flag(
+            false,
+            false,
+            false, 
+            next_carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn rl(&mut self, target: ArithmeticTarget) -> u16 {
+        let mut value = self.read_registers_arithmeticTarget(target) as u8;
+        let next_carry = self.get_bit(value, 7);
+        value <<= 1;
+        if self.registers.f.carry { value = self.set_bit(value, 0); };
+        self.change_registers_arithmeticTarget(target, value as u16);
+        self.change_flag(
+            value == 0, 
+            false, 
+            false, 
+            next_carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn rla(&mut self) -> u16 {
+        let mut value = self.registers.a;
+        let next_carry = self.get_bit(value, 7);
+        value <<= 1;
+        if self.registers.f.carry { value = self.set_bit(value, 0); };
+        self.registers.a = value;
+        self.change_flag(
+            false, 
+            false, 
+            false, 
+            next_carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn rlc(&mut self, target: ArithmeticTarget) -> u16 {
+        let mut value = self.read_registers_arithmeticTarget(target) as u8;
+        let next_carry = self.get_bit(value, 7);
+        value <<= 1;
+        if next_carry { value = self.set_bit(value, 0); };
+        self.change_registers_arithmeticTarget(target, value as u16);
+        self.change_flag(
+            value == 0, 
+            false, 
+            false, 
+            next_carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn rlca(&mut self) -> u16 {
+        let mut value = self.registers.a;
+        let next_carry = self.get_bit(value, 7);
+        value <<= 1;
+        if next_carry { value = self.set_bit(value, 0); };
+        self.registers.a = value;
+        self.change_flag(
+            false, 
+            false, 
+            false, 
+            next_carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn sla(&mut self, target: ArithmeticTarget) -> u16 {
+        let mut value = self.read_registers_arithmeticTarget(target) as u8;
+        let next_carry = self.get_bit(value, 7);
+        value <<= 1;
+        self.change_registers_arithmeticTarget(target, value as u16);
+        self.change_flag(
+            value == 0, 
+            false, 
+            false, 
+        next_carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn sra(&mut self, target: ArithmeticTarget) -> u16 {
+        let mut value = self.read_registers_arithmeticTarget(target) as u8;
+        let bit_7 = self.get_bit(value, 7);
+        let next_carry = self.get_bit(value, 0);
+        value >>= 1;
+        if bit_7 { value = self.set_bit(value, 7); };
+        self.change_registers_arithmeticTarget(target, value as u16);
+        self.change_flag(
+            value == 0, 
+            false, 
+            false, 
+        next_carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn swap(&mut self, target: ArithmeticTarget) -> u16 {
+        let mut value = self.read_registers_arithmeticTarget(target) as u8;
+        value = value >> 4 | value << 4;
+        self.change_registers_arithmeticTarget(target, value as u16);
+        self.change_flag(
+            value == 0, 
+            false, 
+            false, 
+            false);
+        self.pc.wrapping_add(1)
+    }
+
+    fn srl(&mut self, target: ArithmeticTarget) -> u16 {
+        let mut value = self.read_registers_arithmeticTarget(target) as u8;
+        let next_carry = self.get_bit(value, 0);
+        value >>= 1;
+        self.change_registers_arithmeticTarget(target, value as u16);
+        self.change_flag(
+            value == 0, 
+            false, 
+            false, 
+            next_carry);
+        self.pc.wrapping_add(1)
+    }
+    
+    fn bit(&mut self, target: ArithmeticTarget, n: u8) -> u16 {
+        let value = self.read_registers_arithmeticTarget(target) as u8;
+        self.change_flag(
+            !self.get_bit(value, n), 
+            false, 
+            true, 
+            self.registers.f.carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn res(&mut self, target: ArithmeticTarget, n: u8) -> u16 {
+        let mut value = self.read_registers_arithmeticTarget(target) as u8;
+        value = self.res_bit(value, n);
+        self.change_registers_arithmeticTarget(target, value as u16);
+        self.pc.wrapping_add(1)
+    }
+
+    fn set(&mut self, target: ArithmeticTarget, n: u8) -> u16 {
+        let mut value = self.read_registers_arithmeticTarget(target) as u8;
+        value = self.set_bit(value, n);
+        self.change_registers_arithmeticTarget(target, value as u16);
+        self.pc.wrapping_add(1)
+    }
+
+    fn cpl(&mut self) -> u16 {
+        self.registers.a ^= 0xFF;
+        self.change_flag(
+            self.registers.f.zero, 
+            true, 
+            true, 
+            self.registers.f.carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn ccf(&mut self) -> u16 {
+        self.change_flag(
+            self.registers.f.zero, 
+            false, 
+            false, 
+            !self.registers.f.carry);
+        self.pc.wrapping_add(1)
+    }
+
+    fn scf(&mut self) -> u16 {
+        self.change_flag(
+            self.registers.f.zero, 
+            false, 
+            false, 
+            true);
+        self.pc.wrapping_add(1)
+    }
+
     fn jump(&self, test: JumpTest) -> u16 {
         if (self.should_jump(test)) {
-            let least_signigicant_byte = self.bus.read_byte(self.pc + 1) as u16;
-            let most_significant_byte = self.bus.read_byte(self.pc + 2) as u16;
-            (most_significant_byte << 8) | least_signigicant_byte
+            self.read_next_word()
         } else {
             self.pc.wrapping_add(3)
         }
@@ -330,6 +639,15 @@ impl CPU {
 
     fn jumphl(&self) -> u16{
         self.registers.get_hl()
+    }
+
+    fn jr(&self, test: JumpTest) -> u16 {
+        if self.should_jump(test){
+            let value = self.read_next_byte() as i8;
+            self.pc.wrapping_add(2).wrapping_add(value as u16)
+        } else {
+            self.pc.wrapping_add(2)
+        }
     }
 
     fn push(&mut self, target: StackTarget) -> u16 {
@@ -358,15 +676,18 @@ impl CPU {
         let result = (msb << 8) | lsb;
 
         match target {
-            StackTarget::AF => self.registers.set_af(result),
-            StackTarget::BC => self.registers.set_bc(result),
-            StackTarget::DE => self.registers.set_de(result),
-            StackTarget::HL => self.registers.set_hl(result),
-            StackTarget::NONE => (),
-            _ => {panic!("TODO: support more targets")}
+            StackTarget::NONE => result,
+            _ => {
+                match target {
+                    StackTarget::AF => self.registers.set_af(result),
+                    StackTarget::BC => self.registers.set_bc(result),
+                    StackTarget::DE => self.registers.set_de(result),
+                    StackTarget::HL => self.registers.set_hl(result),
+                    _ => panic!("TODO: support more targets")
+                };
+                self.pc.wrapping_add(1)
+            }
         }
-        
-        self.pc.wrapping_add(1)
     }
 
     fn call(&mut self, test: JumpTest) -> u16 {
@@ -381,7 +702,14 @@ impl CPU {
         }
     }
 
-    fn return_(&mut self, test: JumpTest) -> u16 {
+    fn rst(&mut self, address: u16) -> u16 {
+        let next_pc = self.pc.wrapping_add(3);
+
+        self.push(StackTarget::D16(next_pc));
+        address
+    }
+
+    fn ret(&mut self, test: JumpTest) -> u16 {
         if self.should_jump(test) {
             self.pop(StackTarget::NONE)
         } else {
@@ -389,11 +717,25 @@ impl CPU {
         }
     }
 
+    fn reti (&mut self) -> u16 {
+        self.pop(StackTarget::NONE)
+    }
+
+    fn halt(&mut self) -> u16 {
+        self.is_halted = true;
+        self.pc.wrapping_add(1)
+    }
+
     fn step (&mut self){
+        if self.is_halted{
+            return;
+        }
+
         let mut instruction_byte = self.bus.read_byte(self.pc);
         let prefixed = instruction_byte == 0xCB;
         if prefixed {
-            instruction_byte = self.bus.read_byte(self.pc + 1);
+            self.pc = self.pc.wrapping_add(1); //あってる？
+            instruction_byte = self.bus.read_byte(self.pc);
         }
 
         let next_pc = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed){
@@ -530,15 +872,29 @@ impl CPU {
         }
     }
 
+    fn get_bit(&self, value: u8, n: u8) -> bool {
+        1 << n & value > 0
+    }
+
+    fn set_bit(&self, value: u8, n: u8) -> u8 {
+        1 << n | value
+    }
+
+    fn res_bit(&self, value: u8, n: u8) -> u8 {
+        let mut mask: u8 = 0x01 << n;
+        mask ^= 0xFF;
+        mask & value
+    }
+
 }
 
 struct  MemoryBus{
-    memory: [u8; 0xFFFF]
+    memory: [u8; 0x10000]
 }
 
 impl MemoryBus{
     fn new() -> Self{
-        MemoryBus { memory: [0; 0xFFFF] }
+        MemoryBus { memory: [0; 0x10000] }
     }
 
     fn read_byte(&self, address: u16) -> u8 {
@@ -1016,6 +1372,45 @@ mod test {
     }
 
     #[test]
+    fn test_or(){
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xB0);
+        cpu.registers.b = 0x0F;
+        cpu.registers.a = 0x81;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x8F);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xB0);
+        cpu.registers.b = 0x00;
+        cpu.registers.a = 0x00;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x00);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(true, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xF6);
+        cpu.bus.write_byte(0x0001, 0x01);
+        cpu.registers.a = 0x80;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x81);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+    }
+
+    #[test]
     fn test_jp(){
         let mut cpu = CPU::new();
         cpu.bus.write_byte(0x0000, 0xC3);
@@ -1031,5 +1426,324 @@ mod test {
         cpu.bus.write_byte(0x0002, 0x02);
         cpu.step();
         assert_eq!(cpu.pc, 0x0201);
+    }
+
+    #[test]
+    fn test_call_ret(){
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCD);
+        cpu.bus.write_byte(0x0001, 0x01);
+        cpu.bus.write_byte(0x0002, 0x02);
+        cpu.bus.write_byte(0x0201, 0xC9);
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0201);
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0003);
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCC);
+        cpu.bus.write_byte(0x0001, 0x01);
+        cpu.bus.write_byte(0x0002, 0x02);
+        cpu.bus.write_byte(0x0201, 0xC9);
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0003);
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCC);
+        cpu.bus.write_byte(0x0001, 0x01);
+        cpu.bus.write_byte(0x0002, 0x02);
+        cpu.bus.write_byte(0x0201, 0xC9);
+        cpu.registers.f.zero = true;
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0201);
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0003);
+    }
+
+    #[test]
+    fn test_jr(){
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x18);
+        cpu.bus.write_byte(0x0001, 0xF0);
+        cpu.step();
+        assert_eq!(cpu.pc, 0xFFF2);
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0xFFFE, 0x18);
+        cpu.bus.write_byte(0xFFFF, 0x03);
+        cpu.pc = 0xFFFE;
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0003);
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x18);
+        cpu.bus.write_byte(0x0001, 0x80);
+        cpu.step();
+        assert_eq!(cpu.pc, 0xFF82);
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x18);
+        cpu.bus.write_byte(0x0001, 0xFF);
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0001);
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x28);
+        cpu.bus.write_byte(0x0001, 0x10);
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0002);
+    }
+
+    #[test]
+    fn test_rr(){
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x18);
+        cpu.registers.b = 0x22;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x11);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x18);
+        cpu.registers.b = 0x22;
+        cpu.registers.f.carry = true;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x91);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x18);
+        cpu.registers.b = 0x01;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x00);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(true, false, false, true)
+        );
+
+        // rra
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x1F);
+        cpu.registers.a = 0x01;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x00);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, true)
+        );
+    }
+
+    #[test]
+    fn test_rrc(){
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x08);
+        cpu.registers.b = 0x22;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x11);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x08);
+        cpu.registers.b = 0x01;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x80);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, true)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x08);
+        cpu.registers.b = 0x00;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x00);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(true, false, false, false)
+        );
+
+        //rrca
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x0F);
+        cpu.registers.a = 0x00;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x00);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0x0F);
+        cpu.registers.a = 0x81;
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0xC0);
+        assert_eq!(cpu.pc, 0x0001);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, true)
+        );
+    }
+
+    #[test]
+    fn test_bit_res_set(){
+        // BIT
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x40);
+        cpu.registers.b = 0x81;
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, true, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x48);
+        cpu.registers.b = 0x81;
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(true, false, true, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x78);
+        cpu.registers.b = 0x81;
+        cpu.step();
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, true, false)
+        );
+
+        // RES
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x80);
+        cpu.registers.b = 0x81;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x80);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0xA0);
+        cpu.registers.b = 0xFF;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0xEF);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0xB8);
+        cpu.registers.b = 0x80;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x00);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        // SET
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0xC0);
+        cpu.registers.b = 0x80;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x81);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0xE0);
+        cpu.registers.b = 0x80;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x90);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+    }
+
+    #[test]
+    fn test_srl(){
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x38);
+        cpu.registers.b = 0x7E;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x3F);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x38);
+        cpu.registers.b = 0x7E;
+        cpu.registers.f.carry = true;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x3F);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, false)
+        );
+
+        let mut cpu = CPU::new();
+        cpu.bus.write_byte(0x0000, 0xCB);
+        cpu.bus.write_byte(0x0001, 0x38);
+        cpu.registers.b = 0x81;
+        cpu.step();
+        assert_eq!(cpu.registers.b, 0x40);
+        assert_eq!(cpu.pc, 0x0002);
+        assert_eq!(
+            cpu.registers.f,
+            F(false, false, false, true)
+        );
     }
 }
