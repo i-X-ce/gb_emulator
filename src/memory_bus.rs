@@ -1,17 +1,35 @@
+use crate::gpu::{self, GPU, VRAM_BEGIN, VRAM_END};
+
 pub struct  MemoryBus{
-    memory: [u8; 0x10000]
+    memory: [u8; 0x10000],
+    gpu: GPU,
 }
 
 impl MemoryBus{
     pub fn new() -> Self{
-        MemoryBus { memory: [0; 0x10000] }
+        MemoryBus {
+            memory: [0; 0x10000],
+            gpu: GPU::new(),
+        }
     }
 
     pub fn read_byte(&self, address: u16) -> u8 {
-        self.memory[address as usize]
+        let address = address as usize;
+        match address {
+            VRAM_BEGIN..=VRAM_END => {
+                self.gpu.read_vram(address - VRAM_BEGIN)
+            }
+            _ => panic!("TODO: support other areas of memory")
+        }
     }
 
     pub fn write_byte(&mut self, address: u16, value: u8){
-        self.memory[address as usize] = value;
+        let address = address as usize;
+        match address {
+            VRAM_BEGIN..=VRAM_END => {
+                self.gpu.write_vram(address - VRAM_BEGIN, value)
+            }
+            _ => panic!("TODO: support other areas of memory")
+        }
     }
 }

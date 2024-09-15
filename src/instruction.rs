@@ -348,7 +348,6 @@ impl Instruction {
             0xFD => Some(Instruction::SET(ArithmeticTarget::L, 7)),
             0xFE => Some(Instruction::SET(ArithmeticTarget::HL_, 7)),
             0xFF => Some(Instruction::SET(ArithmeticTarget::A, 7)),
-            _ => None
         }
     }
 

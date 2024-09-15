@@ -626,7 +626,7 @@ impl CPU {
     }
 
     fn jump(&self, test: JumpTest) -> u16 {
-        if (self.should_jump(test)) {
+        if self.should_jump(test) {
             self.read_next_word()
         } else {
             self.pc.wrapping_add(3)
