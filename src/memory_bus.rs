@@ -18,7 +18,8 @@ impl MemoryBus{
         match address {
             VRAM_BEGIN..=VRAM_END => {
                 self.gpu.read_vram(address - VRAM_BEGIN)
-            }
+            },
+            0xFF44 => self.gpu.ly,
             _ => panic!("TODO: support other areas of memory")
         }
     }
@@ -28,7 +29,8 @@ impl MemoryBus{
         match address {
             VRAM_BEGIN..=VRAM_END => {
                 self.gpu.write_vram(address - VRAM_BEGIN, value)
-            }
+            },
+            0xFF44 => self.gpu.ly = value,
             _ => panic!("TODO: support other areas of memory")
         }
     }
