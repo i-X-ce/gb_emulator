@@ -2,7 +2,10 @@ mod cpu;
 mod gpu;
 mod instruction;
 mod memory_bus;
+mod cartridge;
+mod mapper;
 
+use cartridge::Cartridge;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -11,6 +14,8 @@ use sdl2::render::Texture;
 use sdl2::EventPump;
 
 fn main() {
+    Cartridge::new("..//rom//cpu_instrs.gb");
+
     // init sdl2
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();

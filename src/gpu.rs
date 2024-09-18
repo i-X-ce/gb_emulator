@@ -17,6 +17,15 @@ fn empty_tile() -> Tile {
     [[TilePixelValue::Zero; 8]; 8]
 }
 
+fn tilePixelValueToColor(value: TilePixelValue) -> [u8; 3]{
+    match value {
+        TilePixelValue::Zero => [0, 0, 0],
+        TilePixelValue::One => [85, 85, 85],
+        TilePixelValue::Two => [175, 175, 175],
+        TilePixelValue::Three => [255, 255, 255],
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct LcdControlregisters {
     // 0xFF40
@@ -221,6 +230,27 @@ impl GPU {
     }
 
     fn draw_all(&mut self){
-        
+        for addr in 0x9800..=0x9BFF{
+            let addr = addr as usize - VRAM_BEGIN;
+            let index = self.vram[addr] as usize;
+            let tile = self.tile_set[index];
+            let i = addr - 0x1800;
+            let x = i % 32 * 8;
+            let y = i / 32 * 8;
+            
+            for ty in 0..8 {
+                for tx in 0..8 {
+                    let value = tile[ty][tx];
+                    let color = tilePixelValueToColor(value);
+                    let o = y * 32 + x + ty * 8 + tx;
+                    if x > 160 || y > 144 {
+                        continue;
+                    }
+                    self.frame[o] = color[0];
+                    self.frame[o + 1] = color[1];
+                    self.frame[o + 2] = color[2];
+                }
+            }
+        }
     }
 }
