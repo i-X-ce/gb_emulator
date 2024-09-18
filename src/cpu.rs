@@ -47,6 +47,7 @@ impl std::convert::From<u8> for FlagsRegister {
     }
 }
 
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FlagsRegister {
     zero: bool,
@@ -111,12 +112,71 @@ impl Registers {
     }
 }
 
+const CYCLE: [u16; 256] = [
+    4, 12, 8, 8, 4, 4, 8, 4, 20, 8, 8, 8, 4, 4, 8, 4, 
+    4, 12, 8, 8, 4, 4, 8, 4, 12, 8, 8, 8, 4, 4, 8, 4,
+    12, 12, 8, 8, 4, 4, 8, 4, 12, 8, 8, 8, 4, 4, 8, 4,
+    12, 12, 8, 8, 12, 12, 12, 4, 12, 8, 8, 8, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    8, 8, 8, 8, 8, 8, 4, 8, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    20, 12, 16, 16, 24, 16, 8, 16, 20, 16, 16, 4, 24, 24, 8, 16,
+    20, 12, 16, 4, 24, 16, 8, 16, 20, 16, 16, 4, 24, 4, 8, 16,
+    12, 12, 8, 4, 4, 16, 8, 16, 16, 4, 16, 4, 4, 4, 8, 16,
+    12, 12, 8, 4, 4, 16, 8, 16, 12, 8, 16, 4, 4, 4, 8, 16,
+];
+
+const CYCLE_2: [u16; 256] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0,
+    8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    8, 0, 12, 0, 12, 0, 0, 0, 8, 0, 12, 0, 12, 0, 0, 0,
+    8, 0, 12, 0, 12, 0, 0, 0, 8, 0, 12, 0, 12, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
+const CYCLE_PREFIXED: [u16; 256] = [
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 12, 8, 8, 8, 8, 8, 8, 8, 12, 8,
+    8, 8, 8, 8, 8, 8, 12, 8, 8, 8, 8, 8, 8, 8, 12, 8,
+    8, 8, 8, 8, 8, 8, 12, 8, 8, 8, 8, 8, 8, 8, 12, 8,
+    8, 8, 8, 8, 8, 8, 12, 8, 8, 8, 8, 8, 8, 8, 12, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
+];
+
 pub struct CPU {
     pub registers: Registers,
     pub pc: u16,
     pub sp: u16,
     pub bus: MemoryBus,
     pub is_halted: bool,
+    cycle2_flag: bool,
+    pub ime: bool,
 }
 
 impl CPU {
@@ -127,12 +187,14 @@ impl CPU {
             sp: 0xFFFE,
             bus: MemoryBus::new(cartridge),
             is_halted: false,
+            cycle2_flag: false,
+            ime: false,
         }
     }
 
     fn execute(&mut self, instruction: Instruction) -> u16 {
         match instruction {
-            Instruction::NOP => self.pc,
+            Instruction::NOP => self.pc.wrapping_add(1),
             Instruction::LD(load_type) => self.ld(load_type),
             Instruction::INC(target) => self.inc(target),
             Instruction::DEC(target) => self.dec(target),
@@ -173,10 +235,10 @@ impl CPU {
             Instruction::RST(address) => self.rst(address),
             Instruction::RET(test) => self.ret(test),
             Instruction::RETI => self.reti(),
-            Instruction::STOP => panic!("call STOP"),
-            Instruction::HALT => self.pc,
-            Instruction::DI => panic!("call DI"),
-            Instruction::EI => panic!("call EI"),
+            Instruction::STOP => self.pc.wrapping_add(1), //TODO
+            Instruction::HALT => self.pc.wrapping_add(1), //TODO
+            Instruction::DI => self.di(),
+            Instruction::EI => self.ei(),
             // _ => { panic!("TODO: support more instructions")}
         }
     }
@@ -586,10 +648,11 @@ impl CPU {
         self.pc.wrapping_add(1)
     }
 
-    fn jump(&self, test: JumpTest) -> u16 {
+    fn jump(&mut self, test: JumpTest) -> u16 {
         if self.should_jump(test) {
             self.read_next_word()
         } else {
+            self.cycle2_flag = true;
             self.pc.wrapping_add(3)
         }
     }
@@ -598,11 +661,12 @@ impl CPU {
         self.registers.get_hl()
     }
 
-    fn jr(&self, test: JumpTest) -> u16 {
+    fn jr(&mut self, test: JumpTest) -> u16 {
         if self.should_jump(test) {
             let value = self.read_next_byte() as i8;
             self.pc.wrapping_add(2).wrapping_add(value as u16)
         } else {
+            self.cycle2_flag = true;
             self.pc.wrapping_add(2)
         }
     }
@@ -657,6 +721,7 @@ impl CPU {
             self.push(StackTarget::D16(next_pc));
             self.read_next_word()
         } else {
+            self.cycle2_flag = true;
             next_pc
         }
     }
@@ -672,6 +737,7 @@ impl CPU {
         if self.should_jump(test) {
             self.pop(StackTarget::NONE)
         } else {
+            self.cycle2_flag = true;
             self.pc.wrapping_add(1)
         }
     }
@@ -685,6 +751,16 @@ impl CPU {
         self.pc.wrapping_add(1)
     }
 
+    fn di(&mut self) -> u16 {
+        self.ime = false;
+        self.pc.wrapping_add(1)
+    }
+
+    fn ei(&mut self) -> u16 {
+        self.ime = true;
+        self.pc.wrapping_add(1)
+    }
+
     pub fn step(&mut self) {
         if self.is_halted {
             return;
@@ -693,13 +769,22 @@ impl CPU {
         let mut instruction_byte = self.bus.read_byte(self.pc);
         let prefixed = instruction_byte == 0xCB;
         if prefixed {
-            self.pc = self.pc.wrapping_add(1); //あってる？
+            self.pc = self.pc.wrapping_add(1);
             instruction_byte = self.bus.read_byte(self.pc);
         }
 
+        self.cycle2_flag = false;
         let next_pc = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed)
         {
-            self.execute(instruction)
+            let result = self.execute(instruction);
+            let mut cycles = CYCLE[instruction_byte as usize];
+            if self.cycle2_flag {
+                cycles = CYCLE_2[instruction_byte as usize]
+            } else if prefixed {
+                cycles = CYCLE_PREFIXED[instruction_byte as usize];
+            }
+            self.bus.gpu.update(cycles);
+            result
         } else {
             let description = format!(
                 "0x{}{:x}",
@@ -709,7 +794,9 @@ impl CPU {
             panic!("Unkown instruction found for : 0x{:x}", instruction_byte);
         };
 
+        // println!("pc:0x{:02X?}", self.pc);
         self.pc = next_pc;
+        self.bus.gpu.update(1);
     }
 
     fn read_next_byte(&self) -> u8 {
@@ -788,10 +875,20 @@ impl CPU {
                 self.registers
                     .set_hl((self.registers.get_hl()).wrapping_sub(1));
             }
+            ArithmeticTarget::D16_ => {
+                self.bus.write_byte(self.read_next_word(), value as u8);
+            },
+            ArithmeticTarget::FD8_ => {
+                self.bus.write_byte(0xFF00 + self.read_next_byte() as u16, value as u8);
+            },
+            ArithmeticTarget::FDC_ => {
+                self.bus.write_byte(0xFF00 + self.registers.c as u16, value as u8);
+            }
             // 16bit
             ArithmeticTarget::BC => self.registers.set_bc(value),
             ArithmeticTarget::DE => self.registers.set_de(value),
             ArithmeticTarget::HL => self.registers.set_hl(value),
+            ArithmeticTarget::SP => self.sp = value,
             _ => panic!("TODO: support more targets"),
         };
     }

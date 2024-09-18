@@ -210,14 +210,16 @@ impl GPU {
 
         self.scanline_counter += cycles;
 
-        if (self.scanline_counter >= 456) {
+
+        if self.scanline_counter >= 456 {
             self.scanline_counter -= 456;
             self.ly += 1;
-            let currentline = 0;
+            let currentline = self.ly;
             if currentline == 144 {
                 // VBlank
             } else if currentline > 153 {
                 self.ly = 0;
+                self.draw_all();
             } else if currentline < 144 {
                 self.draw_scan_line(currentline);
             }
@@ -235,17 +237,21 @@ impl GPU {
             let index = self.vram[addr] as usize;
             let tile = self.tile_set[index];
             let i = addr - 0x1800;
-            let x = i % 32 * 8;
-            let y = i / 32 * 8;
+            let x = i % 32;
+            let y = i / 32;
             
             for ty in 0..8 {
                 for tx in 0..8 {
                     let value = tile[ty][tx];
                     let color = tilePixelValueToColor(value);
-                    let o = y * 32 + x + ty * 8 + tx;
-                    if x > 160 || y > 144 {
+                    let rx = x * 8 + tx;
+                    let ry = y * 8 + ty;
+                    if rx >= 160 || ry >= 144 {
                         continue;
                     }
+                    let o = (rx + ry * 160) * 3;
+                    // {println!("{}", o / 3);};
+                    // {println!("{},{}", x, y);};
                     self.frame[o] = color[0];
                     self.frame[o + 1] = color[1];
                     self.frame[o + 2] = color[2];

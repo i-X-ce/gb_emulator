@@ -9,9 +9,7 @@ use cartridge::Cartridge;
 use cpu::CPU;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
 use sdl2::pixels::PixelFormatEnum;
-use sdl2::render::Texture;
 use sdl2::EventPump;
 
 fn main() {
@@ -41,19 +39,21 @@ fn main() {
 
     //...
 
-    let cartridge = Cartridge::new("..//rom//cpu_instrs.gb");
+    let cartridge = Cartridge::new("rom//cpu_instrs.gb");
     let mut cpu = CPU::new(cartridge);
 
+
     loop {
+        // println!("{}", cpu.bus.gpu.ly);
         cpu.step();
         if cpu.bus.gpu.ly == 144 {
             let mut screen_state = cpu.bus.gpu.frame;
+
             handle_user_input(&mut event_pump);
-            texture.update(None, &screen_state, 160 * 2).unwrap();
+            texture.update(None, &screen_state, 160 * scale as usize).unwrap();
             canvas.copy(&texture, None, None).unwrap();
             canvas.present();
-
-            ::std::thread::sleep(std::time::Duration::new(0, 70_000));
+            // ::std::thread::sleep(std::time::Duration::new(0, 70_000));
         }
     }
 

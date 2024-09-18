@@ -26,7 +26,7 @@ impl MemoryBus{
             0xFF41 => u8::from(self.gpu.status),
             0xFF44 => self.gpu.ly,
             0xFF45 => self.gpu.lyc,
-            _ => panic!("TODO: support other areas of memory")
+            _ => self.memory[address]
         }
     }
 
@@ -41,7 +41,7 @@ impl MemoryBus{
             0xFF41 => self.gpu.status = LcdStatusregisters::from(value),
             0xFF44 => { /* read only */ },
             0xFF45 => self.gpu.lyc = value,
-            _ => panic!("TODO: support other areas of memory")
+            _ => self.memory[address] = value,
         }
     }
 }

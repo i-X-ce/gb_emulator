@@ -1,8 +1,6 @@
 use std::{fs::{self, File}, io::Read};
 
-use mapper::MBC1;
-
-use crate::mapper;
+use crate::mapper::{self, mbc1::MBC1};
 
 enum RomSize {
     Bank2,
@@ -32,7 +30,7 @@ impl Cartridge {
         println!("{:02X?}", &raw[0x0104..=0x133]);
 
         Cartridge {
-            raw, 
+            raw: raw.clone(), 
             mapper: match raw[0x0147] {
                 // 0x00 => CartridgeType::RomOnly,
                 0x01 => MBC1::new(),
@@ -57,6 +55,6 @@ impl Cartridge {
     }
 
     pub fn write_byte(&mut self, addr: u16, value: u8) {
-        self.mapper.write_byte(&self.raw, addr, value);
+        self.mapper.write_byte(&mut self.raw, addr, value);
     }
 }
