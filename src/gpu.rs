@@ -86,7 +86,7 @@ pub struct GPU {
     pub status: LcdStatusregisters,
     tile_set: [Tile; 384],
     scanline_counter: u16,
-    frame: [u8; 160 * 3 * 144],
+    pub frame: [u8; 160 * 3 * 144],
 }
 
 impl std::convert::From<LcdControlregisters> for u8 {

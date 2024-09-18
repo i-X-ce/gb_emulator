@@ -1,11 +1,12 @@
+mod cartridge;
 mod cpu;
 mod gpu;
 mod instruction;
-mod memory_bus;
-mod cartridge;
 mod mapper;
+mod memory_bus;
 
 use cartridge::Cartridge;
+use cpu::CPU;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -14,9 +15,6 @@ use sdl2::render::Texture;
 use sdl2::EventPump;
 
 fn main() {
-    Cartridge::new("..//rom//cpu_instrs.gb");
-
-    // init sdl2
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     let scale: f32 = 3.0;
@@ -38,34 +36,49 @@ fn main() {
     let mut texture = creator
         .create_texture_target(PixelFormatEnum::RGB24, 160, 144)
         .unwrap();
-    
-    let mut screen_state = [0 as u8; 160 * 3 * 144];
-    loop {
-        handle_user_input(&mut event_pump);
-        read_screen_state(&mut screen_state);
-        texture.update(None, &screen_state, 160 * 2).unwrap();
-        canvas.copy(&texture, None, None).unwrap();
-        canvas.present();
 
-       ::std::thread::sleep(std::time::Duration::new(0, 70_000));
-    }
+    let mut screen_state = [0 as u8; 160 * 3 * 144];
+
     //...
+
+    let cartridge = Cartridge::new("..//rom//cpu_instrs.gb");
+    let mut cpu = CPU::new(cartridge);
+
+    loop {
+        cpu.step();
+        if cpu.bus.gpu.ly == 144 {
+            let mut screen_state = cpu.bus.gpu.frame;
+            handle_user_input(&mut event_pump);
+            texture.update(None, &screen_state, 160 * 2).unwrap();
+            canvas.copy(&texture, None, None).unwrap();
+            canvas.present();
+
+            ::std::thread::sleep(std::time::Duration::new(0, 70_000));
+        }
+    }
+
+    // loop {
+    //     handle_user_input(&mut event_pump);
+    //     read_screen_state(&mut screen_state);
+    //     texture.update(None, &screen_state, 160 * 2).unwrap();
+    //     canvas.copy(&texture, None, None).unwrap();
+    //     canvas.present();
+
+    //    ::std::thread::sleep(std::time::Duration::new(0, 70_000));
+    // }
+
+    // init sdl2
 }
 
 fn handle_user_input(event_pump: &mut EventPump) {
     for event in event_pump.poll_iter() {
         match event {
-            Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                std::process::exit(0)
-            },
-            _ => {/* do nothing */}
+            Event::Quit { .. }
+            | Event::KeyDown {
+                keycode: Some(Keycode::Escape),
+                ..
+            } => std::process::exit(0),
+            _ => { /* do nothing */ }
         }
     }
- }
-
- fn read_screen_state(frame: &mut [u8; 160 * 3 * 144]){
-    let (b1, b2, b3) = sdl2::pixels::Color::WHITE.rgb();
-    frame[0] = b1;
-    frame[1] = b2;
-    frame[2] = b3;
- }
+}
