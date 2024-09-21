@@ -1,9 +1,11 @@
+use std::ops::Sub;
+
 use instruction::{ArithmeticTarget, Instruction, JumpTest, LoadType, StackTarget};
 use memory_bus::MemoryBus;
 
 use crate::{
     cartridge::{self, Cartridge},
-    instruction, memory_bus,
+    instruction::{self, BYTES, CYCLE, CYCLE_2, CYCLE_PREFIXED}, memory_bus,
 };
 
 pub struct Registers {
@@ -112,62 +114,6 @@ impl Registers {
     }
 }
 
-const CYCLE: [u16; 256] = [
-    4, 12, 8, 8, 4, 4, 8, 4, 20, 8, 8, 8, 4, 4, 8, 4, 
-    4, 12, 8, 8, 4, 4, 8, 4, 12, 8, 8, 8, 4, 4, 8, 4,
-    12, 12, 8, 8, 4, 4, 8, 4, 12, 8, 8, 8, 4, 4, 8, 4,
-    12, 12, 8, 8, 12, 12, 12, 4, 12, 8, 8, 8, 4, 4, 8, 4,
-    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
-    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
-    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
-    8, 8, 8, 8, 8, 8, 4, 8, 4, 4, 4, 4, 4, 4, 8, 4,
-    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
-    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
-    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
-    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
-    20, 12, 16, 16, 24, 16, 8, 16, 20, 16, 16, 4, 24, 24, 8, 16,
-    20, 12, 16, 4, 24, 16, 8, 16, 20, 16, 16, 4, 24, 4, 8, 16,
-    12, 12, 8, 4, 4, 16, 8, 16, 16, 4, 16, 4, 4, 4, 8, 16,
-    12, 12, 8, 4, 4, 16, 8, 16, 12, 8, 16, 4, 4, 4, 8, 16,
-];
-
-const CYCLE_2: [u16; 256] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0,
-    8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    8, 0, 12, 0, 12, 0, 0, 0, 8, 0, 12, 0, 12, 0, 0, 0,
-    8, 0, 12, 0, 12, 0, 0, 0, 8, 0, 12, 0, 12, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
-
-const CYCLE_PREFIXED: [u16; 256] = [
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 12, 8, 8, 8, 8, 8, 8, 8, 12, 8,
-    8, 8, 8, 8, 8, 8, 12, 8, 8, 8, 8, 8, 8, 8, 12, 8,
-    8, 8, 8, 8, 8, 8, 12, 8, 8, 8, 8, 8, 8, 8, 12, 8,
-    8, 8, 8, 8, 8, 8, 12, 8, 8, 8, 8, 8, 8, 8, 12, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-    8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8,
-];
 
 pub struct CPU {
     pub registers: Registers,
@@ -176,6 +122,7 @@ pub struct CPU {
     pub bus: MemoryBus,
     pub is_halted: bool,
     cycle2_flag: bool,
+    jp_flag: bool,
     pub ime: bool,
 }
 
@@ -188,13 +135,14 @@ impl CPU {
             bus: MemoryBus::new(cartridge),
             is_halted: false,
             cycle2_flag: false,
+            jp_flag: false,
             ime: false,
         }
     }
 
-    fn execute(&mut self, instruction: Instruction) -> u16 {
+    fn execute(&mut self, instruction: Instruction) {
         match instruction {
-            Instruction::NOP => self.pc.wrapping_add(1),
+            Instruction::NOP => {},
             Instruction::LD(load_type) => self.ld(load_type),
             Instruction::INC(target) => self.inc(target),
             Instruction::DEC(target) => self.dec(target),
@@ -202,7 +150,7 @@ impl CPU {
             Instruction::ADDHL(target) => self.addhl(target),
             Instruction::ADC(target) => self.adc(target),
             Instruction::SUB(target) => self.sub(target),
-            Instruction::SBC(target) => self.sub(target),
+            Instruction::SBC(target) => self.sbc(target),
             Instruction::CP(target) => self.cp(target),
             Instruction::DAA => self.daa(),
             Instruction::AND(target) => self.and(target),
@@ -235,24 +183,28 @@ impl CPU {
             Instruction::RST(address) => self.rst(address),
             Instruction::RET(test) => self.ret(test),
             Instruction::RETI => self.reti(),
-            Instruction::STOP => self.pc.wrapping_add(1), //TODO
-            Instruction::HALT => self.pc.wrapping_add(1), //TODO
+            Instruction::STOP => {}, //TODO
+            Instruction::HALT => {}, //TODO
             Instruction::DI => self.di(),
             Instruction::EI => self.ei(),
             // _ => { panic!("TODO: support more instructions")}
-        }
+        };
     }
 
-    fn ld(&mut self, load_type: LoadType) -> u16 {
+    fn ld(&mut self, load_type: LoadType) {
         match load_type {
             LoadType::Byte(target, source) => {
                 let source_value = self.read_registers_arithmeticTarget(source);
                 self.change_registers_arithmeticTarget(target, source_value);
 
-                match source {
-                    ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-                    _ => self.pc.wrapping_add(1),
-                }
+                // if target == ArithmeticTarget::D16_ {
+                //     return self.pc.wrapping_add(3)
+                // }
+                // match source {
+                //     ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+                //     ArithmeticTarget::D16_ => self.pc.wrapping_add(3),
+                //     _ => self.pc.wrapping_add(1),
+                // }
             }
             LoadType::WORD(target, source) => {
                 let source_value = self.read_registers_arithmeticTarget(source);
@@ -266,11 +218,11 @@ impl CPU {
                         self.registers.f.carry = did_overflow;
                         self.registers.f.half_carry = (r & 0xF) + (value as u8 & 0xF) > 0xF;
                         self.change_registers_arithmeticTarget(target, new_value);
-                        self.pc.wrapping_add(2)
+                        // self.pc.wrapping_add(2)
                     }
                     _ => {
                         self.change_registers_arithmeticTarget(target, source_value);
-                        self.pc.wrapping_add(3)
+                        // self.pc.wrapping_add(3)
                     }
                 }
             }
@@ -280,7 +232,7 @@ impl CPU {
         }
     }
 
-    fn inc(&mut self, target: ArithmeticTarget) -> u16 {
+    fn inc(&mut self, target: ArithmeticTarget) {
         let is8bit = self.is_8bit(target);
         let value = self.read_registers_arithmeticTarget(target);
         match is8bit {
@@ -294,16 +246,15 @@ impl CPU {
                 );
                 self.change_registers_arithmeticTarget(target, new_value as u16);
             }
-
             false => {
                 let (new_value, did_overflow) = value.overflowing_add(1);
                 self.change_registers_arithmeticTarget(target, new_value);
             }
         };
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn dec(&mut self, target: ArithmeticTarget) -> u16 {
+    fn dec(&mut self, target: ArithmeticTarget) {
         let is8bit = self.is_8bit(target);
         let value = self.read_registers_arithmeticTarget(target);
         match is8bit {
@@ -317,16 +268,15 @@ impl CPU {
                 );
                 self.change_registers_arithmeticTarget(target, new_value as u16);
             }
-
             false => {
                 let (new_value, did_overflow) = value.overflowing_sub(1);
                 self.change_registers_arithmeticTarget(target, new_value);
             }
         };
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn add(&mut self, target: ArithmeticTarget) -> u16 {
+    fn add(&mut self, target: ArithmeticTarget) {
         match target {
             ArithmeticTarget::SP => {
                 let r = (self.sp & 0x00FF) as u8;
@@ -340,7 +290,7 @@ impl CPU {
                 );
 
                 self.sp = new_value as u16;
-                self.pc.wrapping_add(2)
+                // self.pc.wrapping_add(2)
             }
             _ => {
                 let value = self.read_registers_arithmeticTarget(target) as u8;
@@ -354,18 +304,18 @@ impl CPU {
 
                 self.registers.a = new_value;
 
-                match target {
-                    ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-                    _ => self.pc.wrapping_add(1),
-                }
+                // match target {
+                //     ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+                //     _ => self.pc.wrapping_add(1),
+                // }
             }
         }
     }
 
-    fn adc(&mut self, target: ArithmeticTarget) -> u16 {
+    fn adc(&mut self, target: ArithmeticTarget) {
         let value = self.read_registers_arithmeticTarget(target) as u8;
         let carry_inc: u8 = if self.registers.f.carry { 1 } else { 0 };
-        let (new_value, did_overflow) = self.registers.a.overflowing_add(value + carry_inc);
+        let (new_value, did_overflow) = self.registers.a.overflowing_add(value.wrapping_add(carry_inc));
         self.change_flag(
             new_value == 0,
             false,
@@ -375,13 +325,13 @@ impl CPU {
 
         self.registers.a = new_value;
 
-        match target {
-            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-            _ => self.pc.wrapping_add(1),
-        }
+        // match target {
+        //     ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+        //     _ => self.pc.wrapping_add(1),
+        // }
     }
 
-    fn addhl(&mut self, target: ArithmeticTarget) -> u16 {
+    fn addhl(&mut self, target: ArithmeticTarget) {
         let value = self.read_registers_arithmeticTarget(target);
         let (new_value, did_overflow) = self.registers.get_hl().overflowing_add(value);
         self.registers.f.subtract = false;
@@ -389,10 +339,10 @@ impl CPU {
         self.registers.f.half_carry =
             (self.registers.get_hl() & 0x0FFF) + (value & 0x0FFF) > 0x0FFF;
         self.registers.set_hl(new_value);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn sub(&mut self, target: ArithmeticTarget) -> u16 {
+    fn sub(&mut self, target: ArithmeticTarget) {
         let value = self.read_registers_arithmeticTarget(target) as u8;
         let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
         self.change_flag(
@@ -403,16 +353,16 @@ impl CPU {
         );
 
         self.registers.a = new_value;
-        match target {
-            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-            _ => self.pc.wrapping_add(1),
-        }
+        // match target {
+        //     ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+        //     _ => self.pc.wrapping_add(1),
+        // }
     }
 
-    fn sbc(&mut self, target: ArithmeticTarget) -> u16 {
+    fn sbc(&mut self, target: ArithmeticTarget) {
         let value = self.read_registers_arithmeticTarget(target) as u8;
         let carry_inc: u8 = if self.registers.f.carry { 1 } else { 0 };
-        let (new_value, did_overflow) = self.registers.a.overflowing_sub(value + carry_inc);
+        let (new_value, did_overflow) = self.registers.a.overflowing_sub(value.wrapping_sub(carry_inc));
         self.change_flag(
             new_value == 0,
             false,
@@ -421,13 +371,13 @@ impl CPU {
         );
 
         self.registers.a = new_value;
-        match target {
-            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-            _ => self.pc.wrapping_add(1),
-        }
+        // match target {
+        //     ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+        //     _ => self.pc.wrapping_add(1),
+        // }
     }
 
-    fn cp(&mut self, target: ArithmeticTarget) -> u16 {
+    fn cp(&mut self, target: ArithmeticTarget) {
         let value = self.read_registers_arithmeticTarget(target) as u8;
         let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
         self.change_flag(
@@ -437,47 +387,47 @@ impl CPU {
             did_overflow,
         );
 
-        match target {
-            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-            _ => self.pc.wrapping_add(1),
-        }
+        // match target {
+        //     ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+        //     _ => self.pc.wrapping_add(1),
+        // }
     }
 
-    fn daa(&mut self) -> u16 {
-        self.pc.wrapping_add(1)
+    fn daa(&mut self) {
+        // self.pc.wrapping_add(1)
     }
 
-    fn and(&mut self, target: ArithmeticTarget) -> u16 {
+    fn and(&mut self, target: ArithmeticTarget) {
         let value = self.read_registers_arithmeticTarget(target) as u8;
         self.registers.a &= value;
         self.change_flag(self.registers.a == 0, false, true, false);
-        match target {
-            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-            _ => self.pc.wrapping_add(1),
-        }
+        // match target {
+        //     ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+        //     _ => self.pc.wrapping_add(1),
+        // }
     }
 
-    fn or(&mut self, target: ArithmeticTarget) -> u16 {
+    fn or(&mut self, target: ArithmeticTarget) {
         let value = self.read_registers_arithmeticTarget(target) as u8;
         self.registers.a |= value;
         self.change_flag(self.registers.a == 0, false, false, false);
-        match target {
-            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-            _ => self.pc.wrapping_add(1),
-        }
+        // match target {
+        //     ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+        //     _ => self.pc.wrapping_add(1),
+        // }
     }
 
-    fn xor(&mut self, target: ArithmeticTarget) -> u16 {
+    fn xor(&mut self, target: ArithmeticTarget) {
         let value = self.read_registers_arithmeticTarget(target) as u8;
         self.registers.a ^= value;
         self.change_flag(self.registers.a == 0, false, false, false);
-        match target {
-            ArithmeticTarget::D8 => self.pc.wrapping_add(2),
-            _ => self.pc.wrapping_add(1),
-        }
+        // match target {
+        //     ArithmeticTarget::D8 => self.pc.wrapping_add(2),
+        //     _ => self.pc.wrapping_add(1),
+        // }
     }
 
-    fn rr(&mut self, target: ArithmeticTarget) -> u16 {
+    fn rr(&mut self, target: ArithmeticTarget) {
         let mut value = self.read_registers_arithmeticTarget(target) as u8;
         let next_carry = self.get_bit(value, 0);
         value >>= 1;
@@ -486,10 +436,10 @@ impl CPU {
         };
         self.change_registers_arithmeticTarget(target, value as u16);
         self.change_flag(value == 0, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn rra(&mut self) -> u16 {
+    fn rra(&mut self) {
         let mut value = self.registers.a;
         let next_carry = self.get_bit(value, 0);
         value >>= 1;
@@ -498,10 +448,10 @@ impl CPU {
         };
         self.registers.a = value;
         self.change_flag(false, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn rrc(&mut self, target: ArithmeticTarget) -> u16 {
+    fn rrc(&mut self, target: ArithmeticTarget) {
         let mut value = self.read_registers_arithmeticTarget(target) as u8;
         let next_carry = self.get_bit(value, 0);
         value >>= 1;
@@ -510,10 +460,10 @@ impl CPU {
         };
         self.change_registers_arithmeticTarget(target, value as u16);
         self.change_flag(value == 0, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn rrca(&mut self) -> u16 {
+    fn rrca(&mut self) {
         let mut value = self.registers.a;
         let next_carry = self.get_bit(value, 0);
         value >>= 1;
@@ -522,10 +472,10 @@ impl CPU {
         };
         self.registers.a = value;
         self.change_flag(false, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn rl(&mut self, target: ArithmeticTarget) -> u16 {
+    fn rl(&mut self, target: ArithmeticTarget) {
         let mut value = self.read_registers_arithmeticTarget(target) as u8;
         let next_carry = self.get_bit(value, 7);
         value <<= 1;
@@ -534,10 +484,10 @@ impl CPU {
         };
         self.change_registers_arithmeticTarget(target, value as u16);
         self.change_flag(value == 0, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn rla(&mut self) -> u16 {
+    fn rla(&mut self) {
         let mut value = self.registers.a;
         let next_carry = self.get_bit(value, 7);
         value <<= 1;
@@ -546,10 +496,10 @@ impl CPU {
         };
         self.registers.a = value;
         self.change_flag(false, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn rlc(&mut self, target: ArithmeticTarget) -> u16 {
+    fn rlc(&mut self, target: ArithmeticTarget) {
         let mut value = self.read_registers_arithmeticTarget(target) as u8;
         let next_carry = self.get_bit(value, 7);
         value <<= 1;
@@ -558,10 +508,10 @@ impl CPU {
         };
         self.change_registers_arithmeticTarget(target, value as u16);
         self.change_flag(value == 0, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn rlca(&mut self) -> u16 {
+    fn rlca(&mut self) {
         let mut value = self.registers.a;
         let next_carry = self.get_bit(value, 7);
         value <<= 1;
@@ -570,19 +520,19 @@ impl CPU {
         };
         self.registers.a = value;
         self.change_flag(false, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn sla(&mut self, target: ArithmeticTarget) -> u16 {
+    fn sla(&mut self, target: ArithmeticTarget) {
         let mut value = self.read_registers_arithmeticTarget(target) as u8;
         let next_carry = self.get_bit(value, 7);
         value <<= 1;
         self.change_registers_arithmeticTarget(target, value as u16);
         self.change_flag(value == 0, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn sra(&mut self, target: ArithmeticTarget) -> u16 {
+    fn sra(&mut self, target: ArithmeticTarget) {
         let mut value = self.read_registers_arithmeticTarget(target) as u8;
         let bit_7 = self.get_bit(value, 7);
         let next_carry = self.get_bit(value, 0);
@@ -592,86 +542,90 @@ impl CPU {
         };
         self.change_registers_arithmeticTarget(target, value as u16);
         self.change_flag(value == 0, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn swap(&mut self, target: ArithmeticTarget) -> u16 {
+    fn swap(&mut self, target: ArithmeticTarget) {
         let mut value = self.read_registers_arithmeticTarget(target) as u8;
         value = value >> 4 | value << 4;
         self.change_registers_arithmeticTarget(target, value as u16);
         self.change_flag(value == 0, false, false, false);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn srl(&mut self, target: ArithmeticTarget) -> u16 {
+    fn srl(&mut self, target: ArithmeticTarget) {
         let mut value = self.read_registers_arithmeticTarget(target) as u8;
         let next_carry = self.get_bit(value, 0);
         value >>= 1;
         self.change_registers_arithmeticTarget(target, value as u16);
         self.change_flag(value == 0, false, false, next_carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn bit(&mut self, target: ArithmeticTarget, n: u8) -> u16 {
+    fn bit(&mut self, target: ArithmeticTarget, n: u8) {
         let value = self.read_registers_arithmeticTarget(target) as u8;
         self.change_flag(!self.get_bit(value, n), false, true, self.registers.f.carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn res(&mut self, target: ArithmeticTarget, n: u8) -> u16 {
+    fn res(&mut self, target: ArithmeticTarget, n: u8) {
         let mut value = self.read_registers_arithmeticTarget(target) as u8;
         value = self.res_bit(value, n);
         self.change_registers_arithmeticTarget(target, value as u16);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn set(&mut self, target: ArithmeticTarget, n: u8) -> u16 {
+    fn set(&mut self, target: ArithmeticTarget, n: u8) {
         let mut value = self.read_registers_arithmeticTarget(target) as u8;
         value = self.set_bit(value, n);
         self.change_registers_arithmeticTarget(target, value as u16);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn cpl(&mut self) -> u16 {
+    fn cpl(&mut self) {
         self.registers.a ^= 0xFF;
         self.change_flag(self.registers.f.zero, true, true, self.registers.f.carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn ccf(&mut self) -> u16 {
+    fn ccf(&mut self) {
         self.change_flag(self.registers.f.zero, false, false, !self.registers.f.carry);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn scf(&mut self) -> u16 {
+    fn scf(&mut self) {
         self.change_flag(self.registers.f.zero, false, false, true);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn jump(&mut self, test: JumpTest) -> u16 {
+    fn jump(&mut self, test: JumpTest) {
         if self.should_jump(test) {
-            self.read_next_word()
+            self.pc = self.read_next_word();
+            self.jp_flag = true;
+            // self.read_next_word()
         } else {
             self.cycle2_flag = true;
-            self.pc.wrapping_add(3)
+            // self.pc.wrapping_add(3)
         }
     }
 
-    fn jumphl(&self) -> u16 {
-        self.registers.get_hl()
+    fn jumphl(&mut self) {
+        self.pc = self.registers.get_hl();
+        self.jp_flag = true;
     }
 
-    fn jr(&mut self, test: JumpTest) -> u16 {
+    fn jr(&mut self, test: JumpTest) {
         if self.should_jump(test) {
             let value = self.read_next_byte() as i8;
-            self.pc.wrapping_add(2).wrapping_add(value as u16)
+            self.pc = self.pc.wrapping_add(2).wrapping_add(value as u16);
+            self.jp_flag = true;
         } else {
             self.cycle2_flag = true;
-            self.pc.wrapping_add(2)
+            // self.pc.wrapping_add(2)
         }
     }
 
-    fn push(&mut self, target: StackTarget) -> u16 {
+    fn push(&mut self, target: StackTarget) {
         let value = match target {
             StackTarget::AF => self.registers.get_af(),
             StackTarget::BC => self.registers.get_bc(),
@@ -686,10 +640,10 @@ impl CPU {
         self.bus.write_byte(self.sp, ((value & 0xFF00) >> 8) as u8);
         self.sp = self.sp.wrapping_sub(1);
         self.bus.write_byte(self.sp, (value & 0x00FF) as u8);
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn pop(&mut self, target: StackTarget) -> u16 {
+    fn pop(&mut self, target: StackTarget) {
         let lsb = self.bus.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
 
@@ -697,68 +651,65 @@ impl CPU {
         self.sp = self.sp.wrapping_add(1);
 
         let result = (msb << 8) | lsb;
-
+        
         match target {
-            StackTarget::NONE => result,
-            _ => {
-                match target {
-                    StackTarget::AF => self.registers.set_af(result),
-                    StackTarget::BC => self.registers.set_bc(result),
-                    StackTarget::DE => self.registers.set_de(result),
-                    StackTarget::HL => self.registers.set_hl(result),
-                    _ => panic!("TODO: support more targets"),
-                };
-                self.pc.wrapping_add(1)
-            }
+            StackTarget::AF => self.registers.set_af(result),
+            StackTarget::BC => self.registers.set_bc(result),
+            StackTarget::DE => self.registers.set_de(result),
+            StackTarget::HL => self.registers.set_hl(result),
+            StackTarget::NONE => self.pc = result,
+            _ => panic!("TODO: support more targets"),
         }
     }
 
-    fn call(&mut self, test: JumpTest) -> u16 {
+    fn call(&mut self, test: JumpTest) {
         // self.call(jump_condition)
         let next_pc = self.pc.wrapping_add(3);
 
         if self.should_jump(test) {
             self.push(StackTarget::D16(next_pc));
-            self.read_next_word()
+            self.pc = self.read_next_word();
+            self.jp_flag = true;
         } else {
             self.cycle2_flag = true;
-            next_pc
+            // next_pc
         }
     }
 
-    fn rst(&mut self, address: u16) -> u16 {
+    fn rst(&mut self, address: u16) {
         let next_pc = self.pc.wrapping_add(3);
 
         self.push(StackTarget::D16(next_pc));
-        address
+        self.pc = address
     }
 
-    fn ret(&mut self, test: JumpTest) -> u16 {
+    fn ret(&mut self, test: JumpTest) {
         if self.should_jump(test) {
-            self.pop(StackTarget::NONE)
+            self.pop(StackTarget::NONE);
+            self.jp_flag = true;
         } else {
             self.cycle2_flag = true;
-            self.pc.wrapping_add(1)
+            // self.pc.wrapping_add(1)
         }
     }
 
-    fn reti(&mut self) -> u16 {
+    fn reti(&mut self) {
         self.pop(StackTarget::NONE)
     }
 
-    fn halt(&mut self) -> u16 {
+    fn halt(&mut self) {
         self.is_halted = true;
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn di(&mut self) -> u16 {
+    fn di(&mut self) {
         self.ime = false;
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
-    fn ei(&mut self) -> u16 {
+    fn ei(&mut self) {
         self.ime = true;
-        self.pc.wrapping_add(1)
+        // self.pc.wrapping_add(1)
     }
 
     pub fn step(&mut self) {
@@ -774,9 +725,10 @@ impl CPU {
         }
 
         self.cycle2_flag = false;
+        self.jp_flag = false;
         let next_pc = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed)
         {
-            let result = self.execute(instruction);
+            self.execute(instruction);
             let mut cycles = CYCLE[instruction_byte as usize];
             if self.cycle2_flag {
                 cycles = CYCLE_2[instruction_byte as usize]
@@ -784,7 +736,11 @@ impl CPU {
                 cycles = CYCLE_PREFIXED[instruction_byte as usize];
             }
             self.bus.gpu.update(cycles);
-            result
+            if self.jp_flag {
+                self.pc 
+            } else {
+                self.pc.wrapping_add(BYTES[instruction_byte as usize])
+            }
         } else {
             let description = format!(
                 "0x{}{:x}",
@@ -794,9 +750,10 @@ impl CPU {
             panic!("Unkown instruction found for : 0x{:x}", instruction_byte);
         };
 
-        // println!("pc:0x{:02X?}", self.pc);
         self.pc = next_pc;
         self.bus.gpu.update(1);
+        // println!("pc:0x{:04X?}, sp:0x{:04X?}, bc:0x{:04X?}, de:0x{:04X?}, hl:0x{:04X?}, af:0x{:04X?}, 0xD943:0x{:02X?}", 
+        //         self.pc, self.sp, self.registers.get_bc(), self.registers.get_de(), self.registers.get_hl(), self.registers.get_af(), self.bus.read_byte(0xD943));
     }
 
     fn read_next_byte(&self) -> u8 {

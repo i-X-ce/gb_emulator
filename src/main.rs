@@ -12,6 +12,8 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::EventPump;
 
+const SCREEN_VISUAL: bool = true; //画面描画するか
+
 fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -39,15 +41,16 @@ fn main() {
 
     //...
 
-    let cartridge = Cartridge::new("rom//cpu_instrs.gb");
+    let cartridge = Cartridge::new("rom//08-misc instrs.gb");
     let mut cpu = CPU::new(cartridge);
 
 
     loop {
         // println!("{}", cpu.bus.gpu.ly);
         cpu.step();
+        if !SCREEN_VISUAL { continue; }
         if cpu.bus.gpu.ly == 144 {
-            let mut screen_state = cpu.bus.gpu.frame;
+            let screen_state = cpu.bus.gpu.frame;
 
             handle_user_input(&mut event_pump);
             texture.update(None, &screen_state, 160 * scale as usize).unwrap();
